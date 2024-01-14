@@ -67,7 +67,9 @@ class GPT(BaseModel):
         assert config.padded_vocab_size is not None
         self.config = config
 
-        self.lm_head = AdapterV2Linear(config.n_embd, config.padded_vocab_size, bias=config.lm_head_bias)
+        self.lm_head = AdapterV2Linear(
+            config.n_embd, config.padded_vocab_size, bias=config.lm_head_bias
+        )
         self.transformer = nn.ModuleDict(
             dict(
                 wte=nn.Embedding(config.padded_vocab_size, config.n_embd),
@@ -83,21 +85,29 @@ class GPT(BaseModel):
         return cls(Config.from_name(name, **kwargs))
 
     def _init_weights(self, module: nn.Module) -> None:
-        """Meant to be used with `gpt.apply(gpt._init_weights)`. Unused method left for completeness."""
+        """Meant to be used with `gpt.apply(gpt._init_weights)`.
+
+        Unused method left for completeness.
+        """
         super()._init_weights(module)
         if isinstance(module, AdapterV2Linear):
             module.reset_parameters()
 
-    def _load_from_state_dict(self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any) -> None:
+    def _load_from_state_dict(
+        self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any
+    ) -> None:
         """For compatibility with base checkpoints."""
-        mapping = {"lm_head.weight": "lm_head.linear.weight", "lm_head.bias": "lm_head.linear.bias"}
+        mapping = {
+            "lm_head.weight": "lm_head.linear.weight",
+            "lm_head.bias": "lm_head.linear.bias",
+        }
         state_dict = map_old_state_dict_weights(state_dict, mapping, prefix)
         super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
 
 class Block(BaseBlock):
-    """The implementation is identical to `lit_gpt.model.Block` with the exception that
-    we replace the attention layer where adaption is implemented."""
+    """The implementation is identical to `lit_gpt.model.Block` with the exception that we replace
+    the attention layer where adaption is implemented."""
 
     def __init__(self, config: Config, block_idx: int) -> None:
         # Skip the parent class __init__ altogether and replace it to avoid useless allocations
@@ -112,14 +122,17 @@ class Block(BaseBlock):
 
 
 class CausalSelfAttention(BaseCausalSelfAttention):
-    """A modification of `lit_gpt.adapter.CausalSelfAttention` that uses the Adapter V2 Linear class"""
+    """A modification of `lit_gpt.adapter.CausalSelfAttention` that uses the Adapter V2 Linear
+    class."""
 
     def __init__(self, config: Config, block_idx: int) -> None:
         # Skip the parent class __init__ altogether and replace it to avoid useless allocations
         nn.Module.__init__(self)
         shape = (config.n_head + 2 * config.n_query_groups) * config.head_size
         # key, query, value projections for all heads, but in a batch
-        self.attn = AdapterV2Linear(in_features=config.n_embd, out_features=shape, bias=config.bias)
+        self.attn = AdapterV2Linear(
+            in_features=config.n_embd, out_features=shape, bias=config.bias
+        )
         # output projection
         self.proj = AdapterV2Linear(config.n_embd, config.n_embd, bias=config.bias)
         # disabled by default
@@ -136,7 +149,9 @@ class CausalSelfAttention(BaseCausalSelfAttention):
 
         self.config = config
 
-    def _load_from_state_dict(self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any) -> None:
+    def _load_from_state_dict(
+        self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any
+    ) -> None:
         """For compatibility with base checkpoints."""
         mapping = {
             "attn.weight": "attn.linear.weight",
@@ -146,7 +161,9 @@ class CausalSelfAttention(BaseCausalSelfAttention):
         }
         state_dict = map_old_state_dict_weights(state_dict, mapping, prefix)
         # For compatibility with older checkpoints
-        if (key := prefix + "gating_factor") in state_dict and state_dict[key].size(1) == self.config.n_head:
+        if (key := prefix + "gating_factor") in state_dict and state_dict[key].size(
+            1
+        ) == self.config.n_head:
             state_dict[key] = state_dict[key].permute(0, 2, 1, 3)
         super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
@@ -159,7 +176,9 @@ class GptNeoxMLP(lit_gpt.model.GptNeoxMLP):
 
         self.config = config
 
-    def _load_from_state_dict(self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any) -> None:
+    def _load_from_state_dict(
+        self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any
+    ) -> None:
         """For compatibility with base checkpoints."""
         mapping = {
             "fc.weight": "fc.linear.weight",
@@ -178,7 +197,9 @@ class LLaMAMLP(lit_gpt.model.LLaMAMLP):
         self.fc_2 = AdapterV2Linear(config.n_embd, config.intermediate_size, bias=config.bias)
         self.proj = AdapterV2Linear(config.intermediate_size, config.n_embd, bias=config.bias)
 
-    def _load_from_state_dict(self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any) -> None:
+    def _load_from_state_dict(
+        self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any
+    ) -> None:
         """For compatibility with base checkpoints."""
         mapping = {
             "fc_1.weight": "fc_1.linear.weight",
@@ -200,7 +221,9 @@ class LLaMAMoE(lit_gpt.model.LLaMAMoE):
 
         self.config = config
 
-    def _load_from_state_dict(self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any) -> None:
+    def _load_from_state_dict(
+        self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any
+    ) -> None:
         """For compatibility with base checkpoints."""
         mapping = {"gate.weight": "gate.linear.weight"}
         state_dict = map_old_state_dict_weights(state_dict, mapping, prefix)
@@ -208,6 +231,6 @@ class LLaMAMoE(lit_gpt.model.LLaMAMoE):
 
 
 def mark_only_adapter_v2_as_trainable(model: GPT) -> None:
-    """Sets requires_grad=False for all non-adapter weights"""
+    """Sets requires_grad=False for all non-adapter weights."""
     for name, param in model.named_parameters():
         param.requires_grad = adapter_filter(name, param)

@@ -91,7 +91,9 @@ class Config:
         if name not in name_to_config:
             # search through all `config['hf_config']['name']`
             try:
-                conf_dict = next(config for config in configs if name == config["hf_config"]["name"])
+                conf_dict = next(
+                    config for config in configs if name == config["hf_config"]["name"]
+                )
             except StopIteration:
                 raise ValueError(f"{name!r} is not a supported config name")
         else:
@@ -114,7 +116,10 @@ class Config:
         if "org" in json_kwargs:  # legacy name
             json_kwargs["hf_config"] = {"name": json_kwargs["name"], "org": json_kwargs.pop("org")}
         if "org" in kwargs:  # legacy name
-            kwargs["hf_config"] = {"name": kwargs.get("name", json_kwargs["name"]), "org": kwargs.pop("org")}
+            kwargs["hf_config"] = {
+                "name": kwargs.get("name", json_kwargs["name"]),
+                "org": kwargs.pop("org"),
+            }
         json_kwargs.update(kwargs)
         return cls(**json_kwargs)
 
@@ -125,7 +130,9 @@ class Config:
             return cls.from_json(config_path, **kwargs)
         if (model_name := path.name) in name_to_config:
             return cls.from_name(model_name, **kwargs)
-        raise FileNotFoundError(f"For {str(path)!r} neither 'lit_config.json' nor matching config exists.")
+        raise FileNotFoundError(
+            f"For {str(path)!r} neither 'lit_config.json' nor matching config exists."
+        )
 
     @property
     def mlp_class(self) -> Type:
@@ -147,7 +154,10 @@ class Config:
 ########################
 configs = [
     # https://huggingface.co/stabilityai/stablelm-base-alpha-3b/blob/main/config.json
-    dict(name="stablelm-base-alpha-3b", hf_config=dict(org="stabilityai", name="stablelm-base-alpha-3b")),
+    dict(
+        name="stablelm-base-alpha-3b",
+        hf_config=dict(org="stabilityai", name="stablelm-base-alpha-3b"),
+    ),
     # https://huggingface.co/stabilityai/stablelm-base-alpha-7b/blob/main/config.json
     dict(
         name="stablelm-base-alpha-7b",
@@ -157,7 +167,11 @@ configs = [
         padding_multiple=256,
     ),
     # https://huggingface.co/stabilityai/stablelm-tuned-alpha-3b/blob/main/config.json
-    dict(name="stablelm-tuned-alpha-3b", hf_config=dict(org="stabilityai", name="stablelm-tuned-alpha-3b"), n_head=32),
+    dict(
+        name="stablelm-tuned-alpha-3b",
+        hf_config=dict(org="stabilityai", name="stablelm-tuned-alpha-3b"),
+        n_head=32,
+    ),
     # https://huggingface.co/stabilityai/stablelm-tuned-alpha-7b/blob/main/config.json
     dict(
         name="stablelm-tuned-alpha-7b",

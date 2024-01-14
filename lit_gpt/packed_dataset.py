@@ -5,12 +5,25 @@
 import os
 import random
 import struct
+from random import shuffle
 
 import numpy as np
+import requests
 import torch
+from gradio_client import Client
 from torch.utils.data import IterableDataset, get_worker_info
+from transformers import AutoTokenizer
 
-dtypes = {1: np.uint8, 2: np.int8, 3: np.int16, 4: np.int32, 5: np.int64, 6: np.float32, 7: np.float64, 8: np.uint16}
+dtypes = {
+    1: np.uint8,
+    2: np.int8,
+    3: np.int16,
+    4: np.int32,
+    5: np.int64,
+    6: np.float32,
+    7: np.float64,
+    8: np.uint16,
+}
 
 
 def code(dtype):
@@ -24,9 +37,45 @@ HDR_MAGIC = b"LITPKDS"
 HDR_SIZE = 24  # bytes
 
 
+class PhiAPIDataset(IterableDataset):
+    def __init__(self, block_size, prompts_file_path, api_endpoint) -> None:
+        self.api_endpoint = api_endpoint
+        self.client = Client(api_endpoint)
+
+        with open(prompts_file_path) as f:
+            self.prompts = f.read().strip().split("\n")
+
+        tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
+        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+        self.tokenizer = tokenizer
+        self.block_size = block_size
+
+    def __iter__(self):
+        shuffle(self.prompts)
+        for prompt in self.prompts:
+            response = self.client.predict(prompt, api_name="/predict")
+            encoded = self.tokenizer.encode(
+                response,
+                return_tensors="pt",
+                max_length=self.block_size,
+                padding="max_length",
+                truncation=True,
+            )
+
+            yield encoded
+
+
 class PackedDataset(IterableDataset):
     def __init__(
-        self, filenames, n_chunks, block_size, seed=12345, shuffle=True, wrap=False, num_processes=1, process_rank=0
+        self,
+        filenames,
+        n_chunks,
+        block_size,
+        seed=12345,
+        shuffle=True,
+        wrap=False,
+        num_processes=1,
+        process_rank=0,
     ):
         self._filenames = filenames
         self._n_chunks = n_chunks
@@ -46,6 +95,7 @@ class PackedDataset(IterableDataset):
 
         max_num_files = len(self._filenames) // num_shards * num_shards
         filenames = self._filenames[shard_id:max_num_files:num_shards]
+
         return PackedDatasetIterator(
             filenames=filenames,
             n_chunks=self._n_chunks,
@@ -56,7 +106,7 @@ class PackedDataset(IterableDataset):
         )
 
 
-class PackedDatasetBuilder(object):
+class PackedDatasetBuilder:
     def __init__(self, outdir, prefix, chunk_size, sep_token, dtype="auto", vocab_size=None):
         if dtype == "auto":
             if vocab_size is None:
@@ -184,7 +234,9 @@ class PackedDatasetIterator:
         self._file_idx += self._n_chunks
         n_all_blocks = self._n_chunks * self._n_blocks
 
-        self._block_idxs = self._rng.permutation(n_all_blocks) if self._shuffle else range(n_all_blocks)
+        self._block_idxs = (
+            self._rng.permutation(n_all_blocks) if self._shuffle else range(n_all_blocks)
+        )
 
         self._curr_idx = 0
 

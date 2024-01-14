@@ -4,7 +4,8 @@ import torch
 class RMSNorm(torch.nn.Module):
     """Root Mean Square Layer Normalization.
 
-    Derived from https://github.com/bzhangGo/rmsnorm/blob/master/rmsnorm_torch.py. BSD 3-Clause License:
+    Derived from https://github.com/bzhangGo/rmsnorm/blob/master/rmsnorm_torch.py. BSD 3-Clause
+    License:
     https://github.com/bzhangGo/rmsnorm/blob/master/LICENSE.
     """
 

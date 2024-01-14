@@ -9,7 +9,9 @@ class Tokenizer:
     def __init__(self, checkpoint_dir: Union[Path, str]) -> None:
         checkpoint_dir = Path(checkpoint_dir)
         if not checkpoint_dir.exists():
-            raise NotADirectoryError(f"The checkpoint directory does not exist: {str(checkpoint_dir)}")
+            raise NotADirectoryError(
+                f"The checkpoint directory does not exist: {str(checkpoint_dir)}"
+            )
 
         self.use_bos = self.check_if_bos_token_used(checkpoint_dir)
         self.bos_id = None
@@ -75,7 +77,10 @@ class Tokenizer:
             return True
         # for examples that also use the Llama tokenizer, but do not have or set add_bos_token to True.
         # ex: https://huggingface.co/stabilityai/StableBeluga2/blob/main/tokenizer_config.json#L2
-        return config.get("add_bos_token") is None and config.get("tokenizer_class") == "LlamaTokenizer"
+        return (
+            config.get("add_bos_token") is None
+            and config.get("tokenizer_class") == "LlamaTokenizer"
+        )
 
     def encode(
         self,

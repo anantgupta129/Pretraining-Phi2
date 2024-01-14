@@ -26,8 +26,8 @@ class Config(BaseConfig):
 
 
 class GPT(BaseModel):
-    """The implementation is identical to `lit_gpt.model.GPT` with the exception that
-    the `Block` saves the layer index and passes it down to the attention layer."""
+    """The implementation is identical to `lit_gpt.model.GPT` with the exception that the `Block`
+    saves the layer index and passes it down to the attention layer."""
 
     def __init__(self, config: Config) -> None:
         nn.Module.__init__(self)
@@ -46,11 +46,16 @@ class GPT(BaseModel):
         self.mask_cache: Optional[torch.Tensor] = None
 
     def forward(
-        self, idx: torch.Tensor, input_pos: Optional[torch.Tensor] = None, lm_head_chunk_size: int = 0
+        self,
+        idx: torch.Tensor,
+        input_pos: Optional[torch.Tensor] = None,
+        lm_head_chunk_size: int = 0,
     ) -> Union[torch.Tensor, List[torch.Tensor]]:
         T = idx.size(1)
         if self.max_seq_length < T:
-            raise ValueError(f"Cannot forward sequence of length {T}, max seq length is only {self.max_seq_length}.")
+            raise ValueError(
+                f"Cannot forward sequence of length {T}, max seq length is only {self.max_seq_length}."
+            )
 
         if input_pos is not None:  # use the kv cache
             cos = self.cos.index_select(0, input_pos)
@@ -77,15 +82,18 @@ class GPT(BaseModel):
         return cls(Config.from_name(name, **kwargs))
 
     def _init_weights(self, module: nn.Module) -> None:
-        """Meant to be used with `gpt.apply(gpt._init_weights)`. Unused method left for completeness."""
+        """Meant to be used with `gpt.apply(gpt._init_weights)`.
+
+        Unused method left for completeness.
+        """
         super()._init_weights(module)
         if isinstance(module, CausalSelfAttention):
             module.reset_parameters()
 
 
 class Block(BaseBlock):
-    """The implementation is identical to `lit_gpt.model.Block` with the exception that
-    we replace the attention layer where adaption is implemented."""
+    """The implementation is identical to `lit_gpt.model.Block` with the exception that we replace
+    the attention layer where adaption is implemented."""
 
     def __init__(self, config: Config, block_idx: int) -> None:
         # Skip the parent class __init__ altogether and replace it to avoid useless allocations
@@ -100,8 +108,8 @@ class Block(BaseBlock):
 
 
 class CausalSelfAttention(BaseCausalSelfAttention):
-    """A modification of `lit_gpt.model.CausalSelfAttention` that adds the attention
-    over the adaption prompt."""
+    """A modification of `lit_gpt.model.CausalSelfAttention` that adds the attention over the
+    adaption prompt."""
 
     def __init__(self, config: Config, block_idx: int) -> None:
         super().__init__(config)
@@ -115,7 +123,11 @@ class CausalSelfAttention(BaseCausalSelfAttention):
         self.block_idx = block_idx
 
     def scaled_dot_product_attention(
-        self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: Optional[torch.Tensor] = None
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         y = super().scaled_dot_product_attention(q, k, v, mask)
         if self.block_idx < self.config.adapter_start_layer:
@@ -130,7 +142,9 @@ class CausalSelfAttention(BaseCausalSelfAttention):
             prefix = self.adapter_wte.weight.reshape(1, aT, self.config.n_embd)
             aqkv = self.attn(prefix)
             q_per_kv = self.config.n_head // self.config.n_query_groups
-            aqkv = aqkv.view(1, aT, self.config.n_query_groups, q_per_kv + 2, self.config.head_size)
+            aqkv = aqkv.view(
+                1, aT, self.config.n_query_groups, q_per_kv + 2, self.config.head_size
+            )
             aqkv = aqkv.permute(0, 2, 3, 1, 4)
             _, ak, av = aqkv.split((q_per_kv, 1, 1), dim=2)
             if self.config.n_query_groups != 1:
@@ -149,9 +163,13 @@ class CausalSelfAttention(BaseCausalSelfAttention):
     def reset_parameters(self) -> None:
         torch.nn.init.zeros_(self.gating_factor)
 
-    def _load_from_state_dict(self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any) -> None:
+    def _load_from_state_dict(
+        self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any
+    ) -> None:
         """For compatibility with older checkpoints."""
-        if (key := prefix + "gating_factor") in state_dict and state_dict[key].size(1) == self.config.n_head:
+        if (key := prefix + "gating_factor") in state_dict and state_dict[key].size(
+            1
+        ) == self.config.n_head:
             state_dict[key] = state_dict[key].permute(0, 2, 1, 3)
         super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 

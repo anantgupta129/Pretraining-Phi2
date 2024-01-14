@@ -4,8 +4,7 @@
 #  Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 #  ------------------------------------------------------------------------------------------
 
-r"""
-    Low Ranking Adaptation for LLMs scheme.
+r"""Low Ranking Adaptation for LLMs scheme.
 
              ┌───────────────────┐
              ┆         h         ┆
@@ -134,7 +133,8 @@ class LoRALinear(LoRALayer):
             nn.init.zeros_(self.lora_B)
 
     def get_lora_AB(self) -> torch.Tensor:
-        """Return merged lora_A and lora_B matrices with the same shape as the pretrained weights."""
+        """Return merged lora_A and lora_B matrices with the same shape as the pretrained
+        weights."""
         return (self.lora_B @ self.lora_A) * self.scaling
 
     def merge(self) -> None:
@@ -151,11 +151,15 @@ class LoRALinear(LoRALayer):
 
                 weight = self.linear.weight
                 # dequantize the pretrained weights
-                weight_data = bnb.functional.dequantize_4bit(weight.data, weight.quant_state).to(lora_data.dtype)
+                weight_data = bnb.functional.dequantize_4bit(weight.data, weight.quant_state).to(
+                    lora_data.dtype
+                )
                 # add pretrained and LoRA weights
                 weight_data += lora_data
                 # assign updated weights and quantize by moving to CUDA device
-                self.linear.weight = bnb.nn.Params4bit(weight_data, requires_grad=False, **weight.__dict__)
+                self.linear.weight = bnb.nn.Params4bit(
+                    weight_data, requires_grad=False, **weight.__dict__
+                )
                 self.linear.weight.cuda(weight.device)
             else:
                 raise NotImplementedError(
@@ -171,7 +175,9 @@ class LoRALinear(LoRALayer):
         pretrained = self.linear(x)
         if self.r == 0 or self.merged:
             return pretrained
-        lora = (self.lora_dropout(x) @ self.lora_A.transpose(0, 1) @ self.lora_B.transpose(0, 1)) * self.scaling
+        lora = (
+            self.lora_dropout(x) @ self.lora_A.transpose(0, 1) @ self.lora_B.transpose(0, 1)
+        ) * self.scaling
         return pretrained + lora
 
 
@@ -230,7 +236,9 @@ class LoRAQKVLinear(LoRALinear):
         # ⚬ r: 2
         # ⚬ enable_lora: [True, False, True]
         if r > 0 and any(enable_lora):
-            self.lora_A = nn.Parameter(torch.zeros((r * sum(enable_lora), in_features)))  # (4, 128)
+            self.lora_A = nn.Parameter(
+                torch.zeros((r * sum(enable_lora), in_features))
+            )  # (4, 128)
             enable_q, enable_k, enable_v = enable_lora
             self.kv_embd_size = self.linear.in_features // (n_head // n_query_groups)
             # qkv_shapes will be used to split a tensor with weights correctly
@@ -273,9 +281,13 @@ class LoRAQKVLinear(LoRALinear):
             if enable_q:
                 self.lora_ind.extend(range(0, self.linear.in_features))
             if enable_k:
-                self.lora_ind.extend(range(self.linear.in_features, self.linear.in_features + self.kv_embd_size))
+                self.lora_ind.extend(
+                    range(self.linear.in_features, self.linear.in_features + self.kv_embd_size)
+                )
             if enable_v:
-                self.lora_ind.extend(range(self.linear.in_features + self.kv_embd_size, self.linear.out_features))
+                self.lora_ind.extend(
+                    range(self.linear.in_features + self.kv_embd_size, self.linear.out_features)
+                )
             self.reset_parameters()
 
     def zero_pad(self, x: torch.Tensor) -> torch.Tensor:
@@ -316,17 +328,22 @@ class LoRAQKVLinear(LoRALinear):
         result = x.new_zeros((*x.shape[:-1], self.linear.out_features))  # (64, 64, 384)
         result = result.view(-1, self.linear.out_features)  # (4096, 384)
         result = result.index_copy(
-            1, torch.tensor(self.lora_ind, device=result.device), x.reshape(-1, sum(self.qkv_shapes))
+            1,
+            torch.tensor(self.lora_ind, device=result.device),
+            x.reshape(-1, sum(self.qkv_shapes)),
         )  # (4096, 256)
-        return result.view((*x.shape[:-1], self.linear.out_features)).transpose(0, 1)  # (64, 64, 384)
+        return result.view((*x.shape[:-1], self.linear.out_features)).transpose(
+            0, 1
+        )  # (64, 64, 384)
 
     def conv1d(self, input: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
-        """An extension of the `torch.nn.functional.conv1d` function with a logic specific to grouped queries.
+        """An extension of the `torch.nn.functional.conv1d` function with a logic specific to
+        grouped queries.
 
         If the number of heads is equal to the number of query groups - grouped queries are disabled
         (see scheme in `lit_gpt/config.py:Config`). In this case the combined QKV matrix consists of equally sized
         query, key and value parts, which means we can utilize `groups` argument from `conv1d`: with this argument the
-        input and weight matrices will be splitted in equally sized parts and applied separately (like having multiple
+        input and weight matrices will be split in equally sized parts and applied separately (like having multiple
         conv layers side by side).
 
         Otherwise QKV matrix consists of unequally sized parts and thus we have to split input and weight matrices manually,
@@ -339,7 +356,6 @@ class LoRAQKVLinear(LoRALinear):
 
         Returns:
             A tensor with a shape (B, C_output, T)
-
         """
         if self.n_head == self.n_query_groups:
             return F.conv1d(input, weight, groups=sum(self.enable_lora))  # (B, C_output, T)
@@ -352,11 +368,13 @@ class LoRAQKVLinear(LoRALinear):
         input_splitted = input.chunk(sum(self.enable_lora), dim=1)  # N * (B, C // N, T)
         weight_splitted = weight.split(self.qkv_shapes)  # N * (C_output', r, 1)
         return torch.cat(
-            [F.conv1d(a, b) for a, b in zip(input_splitted, weight_splitted)], dim=1  # (B, C_output', T)
+            [F.conv1d(a, b) for a, b in zip(input_splitted, weight_splitted)],
+            dim=1,  # (B, C_output', T)
         )  # (B, C_output, T)
 
     def get_lora_AB(self) -> torch.Tensor:
-        """Return merged lora_A and lora_B matrices with the same shape as the pretrained weights."""
+        """Return merged lora_A and lora_B matrices with the same shape as the pretrained
+        weights."""
         # Let's assume that:
         # ⚬ self.linear.weight.data: (384, 128) or (3 * embedding_size, embedding_size)
         # ⚬ self.lora_A.data: (4, 128)
@@ -398,7 +416,9 @@ class LoRAQKVLinear(LoRALinear):
         pretrained = self.linear(x)
         if self.r == 0 or not any(self.enable_lora) or self.merged:
             return pretrained
-        after_A = F.linear(self.lora_dropout(x), self.lora_A)  # (64, 64, 128) @ (4, 128) -> (64, 64, 4)
+        after_A = F.linear(
+            self.lora_dropout(x), self.lora_A
+        )  # (64, 64, 128) @ (4, 128) -> (64, 64, 4)
         # For F.conv1d:
         # ⚬ input: input tensor of shape (mini-batch, in_channels, iW)
         # ⚬ weight: filters of shape (out_channels, in_channels/groups, kW)
@@ -502,11 +522,16 @@ class GPT(BaseModel):
         self.mask_cache: Optional[torch.Tensor] = None
 
     def forward(
-        self, idx: torch.Tensor, input_pos: Optional[torch.Tensor] = None, lm_head_chunk_size: int = 0
+        self,
+        idx: torch.Tensor,
+        input_pos: Optional[torch.Tensor] = None,
+        lm_head_chunk_size: int = 0,
     ) -> Union[torch.Tensor, List[torch.Tensor]]:
         T = idx.size(1)
         if self.max_seq_length < T:
-            raise ValueError(f"Cannot forward sequence of length {T}, max seq length is only {self.max_seq_length}.")
+            raise ValueError(
+                f"Cannot forward sequence of length {T}, max seq length is only {self.max_seq_length}."
+            )
 
         if input_pos is not None:  # use the kv cache
             cos = self.cos.index_select(0, input_pos)
@@ -533,14 +558,22 @@ class GPT(BaseModel):
         return cls(Config.from_name(name, **kwargs))
 
     def _init_weights(self, module: nn.Module) -> None:
-        """Meant to be used with `gpt.apply(gpt._init_weights)`. Unused method left for completeness."""
+        """Meant to be used with `gpt.apply(gpt._init_weights)`.
+
+        Unused method left for completeness.
+        """
         super()._init_weights(module)
         if isinstance(module, LoRALinear):
             module.reset_parameters()
 
-    def _load_from_state_dict(self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any) -> None:
+    def _load_from_state_dict(
+        self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any
+    ) -> None:
         """For compatibility with base checkpoints."""
-        mapping = {"lm_head.weight": "lm_head.linear.weight", "lm_head.bias": "lm_head.linear.bias"}
+        mapping = {
+            "lm_head.weight": "lm_head.linear.weight",
+            "lm_head.bias": "lm_head.linear.bias",
+        }
         state_dict = map_old_state_dict_weights(state_dict, mapping, prefix)
         super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
@@ -590,7 +623,9 @@ class CausalSelfAttention(BaseCausalSelfAttention):
 
         self.config = config
 
-    def _load_from_state_dict(self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any) -> None:
+    def _load_from_state_dict(
+        self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any
+    ) -> None:
         """For compatibility with base checkpoints."""
         mapping = {
             "attn.weight": "attn.linear.weight",
@@ -624,7 +659,9 @@ class GptNeoxMLP(lit_gpt.model.GptNeoxMLP):
 
         self.config = config
 
-    def _load_from_state_dict(self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any) -> None:
+    def _load_from_state_dict(
+        self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any
+    ) -> None:
         """For compatibility with base checkpoints."""
         mapping = {
             "fc.weight": "fc.linear.weight",
@@ -664,7 +701,9 @@ class LLaMAMLP(lit_gpt.model.LLaMAMLP):
             lora_dropout=config.dropout,
         )
 
-    def _load_from_state_dict(self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any) -> None:
+    def _load_from_state_dict(
+        self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any
+    ) -> None:
         """For compatibility with base checkpoints."""
         mapping = {
             "fc_1.weight": "fc_1.linear.weight",
@@ -693,7 +732,9 @@ class LLaMAMoE(lit_gpt.model.LLaMAMoE):
 
         self.config = config
 
-    def _load_from_state_dict(self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any) -> None:
+    def _load_from_state_dict(
+        self, state_dict: Dict, prefix: str, *args: Any, **kwargs: Any
+    ) -> None:
         """For compatibility with base checkpoints."""
         mapping = {"gate.weight": "gate.linear.weight"}
         state_dict = map_old_state_dict_weights(state_dict, mapping, prefix)
