@@ -28,7 +28,7 @@ from lit_gpt.utils import (
 model_name = "phi-2"
 name = "redpajama"
 out_dir = Path("out") / name
-api_endpoint = "https://18fb37c434ff2c9f2d.gradio.live/" # gradio api url for Phi dataset hosting
+api_endpoint = "https://18fb37c434ff2c9f2d.gradio.live/"  # gradio api url for Phi dataset hosting
 
 save_interval = 1000
 eval_interval = 1000
