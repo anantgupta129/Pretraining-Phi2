@@ -86,7 +86,7 @@ def setup(
         strategy = "auto"
 
     precision = precision or get_default_supported_precision(training=True)
-    if precision == "nf4":
+    if precision in ("nf4", "nf4-dq", "fp4-dq"):
         plugin = BitsandbytesPrecision(mode=precision)
         fabric = L.Fabric(devices=devices, strategy=strategy, plugins=plugin, loggers=logger)
     else:
