@@ -17,7 +17,7 @@ wd = Path(__file__).parent.parent.resolve()
 sys.path.append(str(wd))
 
 from lit_gpt.model import GPT, Block, Config
-from lit_gpt.packed_dataset import CombinedDataset, PackedDataset
+from lit_gpt.packed_dataset import CombinedDataset, PackedDataset, PhiAPIDataset
 from lit_gpt.utils import (
     chunked_cross_entropy,
     estimate_flops,
@@ -28,6 +28,8 @@ from lit_gpt.utils import (
 model_name = "phi-2"
 name = "redpajama"
 out_dir = Path("out") / name
+api_endpoint = "https://18fb37c434ff2c9f2d.gradio.live/" # gradio api url for Phi dataset hosting
+
 save_interval = 1000
 eval_interval = 1000
 eval_iters = 100
@@ -299,8 +301,10 @@ def create_dataloader(
         raise RuntimeError(
             f"No data found at {data_dir}. Make sure you ran prepare_redpajama.py to create the dataset."
         )
-
-    weights = [weight for _, weight in data_config]
+    dataset = PhiAPIDataset(
+        block_size=block_size, prompts_file_path="data/prompts.txt", api_endpoint=api_endpoint
+    )
+    weights = [weight for _, weight in data_config] + [2.5]
     sum_weights = sum(weights)
     weights = [el / sum_weights for el in weights]
 
