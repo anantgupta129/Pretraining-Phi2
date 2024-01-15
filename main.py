@@ -7,6 +7,7 @@ from typing import Optional, Tuple, Union
 import lightning as L
 import torch
 from lightning.fabric.loggers import CSVLogger
+from lightning.fabric.plugins import BitsandbytesPrecision
 from lightning.fabric.strategies import FSDPStrategy
 from lightning.fabric.utilities import ThroughputMonitor, measure_flops
 from torch.utils.data import DataLoader
@@ -73,8 +74,6 @@ def setup(
     precision: Optional[str] = None,
     resume: Union[bool, Path] = False,
 ) -> None:
-    precision = precision or get_default_supported_precision(training=True)
-
     if devices > 1:
         strategy = FSDPStrategy(
             auto_wrap_policy={Block},
@@ -86,7 +85,12 @@ def setup(
     else:
         strategy = "auto"
 
-    fabric = L.Fabric(devices=devices, strategy=strategy, precision=precision, loggers=logger)
+    precision = precision or get_default_supported_precision(training=True)
+    if precision == "nf4":
+        plugin = BitsandbytesPrecision(mode=precision)
+        fabric = L.Fabric(devices=devices, strategy=strategy, plugins=plugin, loggers=logger)
+    else:
+        fabric = L.Fabric(devices=devices, strategy=strategy, precision=precision, loggers=logger)
     fabric.print(hparams)
     fabric.launch(main, train_data_dir, val_data_dir, resume)
 
